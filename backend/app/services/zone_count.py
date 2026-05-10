@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.zone_count import ZoneCount
+
+logger = logging.getLogger(__name__)
 
 
 async def increment_zone_entry_count(session: AsyncSession, zone_id: str) -> None:
@@ -15,3 +19,4 @@ async def increment_zone_entry_count(session: AsyncSession, zone_id: str) -> Non
         )
     )
     await session.execute(stmt)
+    logger.info("zone_count_incremented zone_id=%s", zone_id)

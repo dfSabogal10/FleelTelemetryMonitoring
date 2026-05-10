@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,8 @@ from app.schemas.telemetry import TelemetryIngestRequest, TelemetryIngestRespons
 from app.services.anomaly import detect_anomalies
 from app.services.fault_transition import FaultTransitionService
 from app.services.zone_count import increment_zone_entry_count
+
+logger = logging.getLogger(__name__)
 
 
 class TelemetryService:
@@ -49,6 +53,8 @@ class TelemetryService:
         session.add(event)
         await session.flush()
 
+        is_stale = vehicle.last_seen_at is not None and payload.timestamp < vehicle.last_seen_at
+
         if payload.zone_entered is not None:
             await increment_zone_entry_count(session, payload.zone_entered)
 
@@ -63,8 +69,14 @@ class TelemetryService:
                     message=anomaly["message"],
                 )
             )
+            logger.warning(
+                "anomaly_created vehicle_id=%s anomaly_type=%s severity=%s",
+                payload.vehicle_id,
+                anomaly["type"],
+                anomaly["severity"],
+            )
 
-        if vehicle.last_seen_at is None or payload.timestamp >= vehicle.last_seen_at:
+        if not is_stale:
             await FaultTransitionService.handle_fault_transition_if_needed(
                 session=session,
                 vehicle=vehicle,
@@ -76,5 +88,12 @@ class TelemetryService:
             vehicle.lat = payload.lat
             vehicle.lon = payload.lon
             vehicle.last_seen_at = payload.timestamp
+        else:
+            logger.warning(
+                "stale_telemetry_persisted vehicle_id=%s telemetry_event_id=%s "
+                "skipped_vehicle_state_update",
+                payload.vehicle_id,
+                event.id,
+            )
 
         return TelemetryIngestResponse(telemetry_event_id=event.id)

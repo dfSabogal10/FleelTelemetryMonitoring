@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.maintenance_record import MaintenanceRecord
 from app.models.mission import Mission
 from app.models.vehicle import Vehicle
+
+logger = logging.getLogger(__name__)
 
 
 class FaultTransitionService:
@@ -22,6 +25,8 @@ class FaultTransitionService:
             return
         if vehicle.status == "fault":
             return
+
+        logger.warning("vehicle_transitioned_to_fault vehicle_id=%s", vehicle.id)
 
         mission_stmt = (
             select(Mission)
@@ -38,10 +43,21 @@ class FaultTransitionService:
             active_mission.cancelled_at = now_utc
             active_mission.cancel_reason = "vehicle_fault"
 
+            logger.warning(
+                "active_mission_cancelled mission_id=%s vehicle_id=%s",
+                active_mission.id,
+                vehicle.id,
+            )
+
             session.add(
                 MaintenanceRecord(
                     vehicle_id=vehicle.id,
                     mission_id=active_mission.id,
                     reason="vehicle_fault",
                 )
+            )
+            logger.warning(
+                "maintenance_record_created vehicle_id=%s mission_id=%s",
+                vehicle.id,
+                active_mission.id,
             )

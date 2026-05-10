@@ -4,12 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import AsyncSessionLocal, init_db
+from app.error_handlers import domain_error_handler, internal_server_error_handler
+from app.exceptions import DomainError
+from app.logging_conf import configure_logging
+from app.middleware.request_logging import register_request_logging
 from app.routers.anomalies import router as anomalies_router
 from app.routers.fleet import router as fleet_router
 from app.routers.health import router as health_router
 from app.routers.telemetry import router as telemetry_router
 from app.routers.zones import router as zones_router
 from app.services.seed import seed_database
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -27,6 +33,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_exception_handler(DomainError, domain_error_handler)
+app.add_exception_handler(Exception, internal_server_error_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -37,6 +46,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+register_request_logging(app)
 
 app.include_router(health_router)
 app.include_router(telemetry_router)

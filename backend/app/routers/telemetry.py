@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.exceptions import VehicleNotFoundError
 from app.schemas.telemetry import TelemetryIngestRequest, TelemetryIngestResponse
 from app.services.telemetry import TelemetryService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/telemetry", response_model=TelemetryIngestResponse)
@@ -17,7 +19,12 @@ async def ingest_telemetry(
     try:
         response = await TelemetryService.ingest_event(db, payload)
         await db.commit()
+        logger.info(
+            "telemetry_accepted vehicle_id=%s telemetry_event_id=%s",
+            payload.vehicle_id,
+            response.telemetry_event_id,
+        )
         return response
-    except VehicleNotFoundError as exc:
+    except Exception:
         await db.rollback()
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise

@@ -80,6 +80,13 @@ async def test_unknown_vehicle_returns_404(client: AsyncClient) -> None:
         json=_valid_payload(vehicle_id="v-99999"),
     )
     assert response.status_code == 404
+    body = response.json()
+    assert body == {
+        "error": {
+            "code": "vehicle_not_found",
+            "message": "Vehicle v-99999 was not found",
+        }
+    }
 
 
 @pytest.mark.parametrize(

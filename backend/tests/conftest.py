@@ -48,6 +48,8 @@ async def setup_test_database() -> None:
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    transport = ASGITransport(app=app)
+    # Starlette ServerErrorMiddleware re-raises after sending a 500 body; suppress so
+    # tests can assert status codes without httpx surfacing the exception.
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

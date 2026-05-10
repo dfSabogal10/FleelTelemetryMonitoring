@@ -95,6 +95,14 @@ Point `VITE_API_BASE_URL` at your API if not using the Compose default.
 
 Validation uses **Pydantic** (`422` on validation failure). Domain rules (unknown vehicle, DB constraints) return **application errors** (e.g. `404` for unknown `vehicle_id` on ingest).
 
+#### Error response shapes
+
+| Case | HTTP | Body shape |
+|------|------|------------|
+| **Pydantic / validation** | `422` | FastAPI default: `{ "detail": ... }` |
+| **Domain / business** (e.g. unknown vehicle) | varies | `{ "error": { "code": "<snake_case>", "message": "<human-readable>" } }` |
+| **Unexpected server failure** | `500` | `{ "error": { "code": "internal_server_error", "message": "Unexpected server error" } }` — stack traces are **not** returned to clients; details are logged server-side only. |
+
 #### `POST /telemetry` (JSON body)
 
 | Field | Validation |
