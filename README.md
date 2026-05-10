@@ -66,7 +66,7 @@ E2E-style ingestion smoke (`tests/e2e/test_fleet_ingestion_smoke.py`) exercises 
 
 ### Testing strategy
 
-Tests deliberately emphasize **backend correctness**: transactional behavior, **concurrency**, and **E2E ingestion smoke** coverage. **Frontend-heavy** test suites were deprioritized relative to timebox and risk — the highest-impact unknowns for this challenge live in **data races and transactional boundaries**, not React component logic.
+Tests deliberately emphasize **backend correctness**: transactional behavior, **concurrency**, and **E2E ingestion smoke** coverage. The frontend adds **lightweight Vitest + Testing Library** checks (presentational components and a mocked dashboard smoke render); breadth stays intentionally smaller than the backend suite.
 
 ### Frontend (without Docker)
 
@@ -75,6 +75,8 @@ cd frontend
 npm ci
 npm run dev
 ```
+
+Run **`npm run test`** for frontend unit/component tests (`vitest run`).
 
 Point `VITE_API_BASE_URL` at your API if not using the Compose default.
 

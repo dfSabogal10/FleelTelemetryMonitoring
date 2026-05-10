@@ -24,16 +24,20 @@ Plain markdown log of AI-assisted work: **prompts**, **summarized outputs**, **c
 | 12 | Refine dashboard to a **single-page operational** view—fleet cards, vehicle table, zone counts, recent anomalies—avoid enterprise admin patterns. |
 | 13 | Generate README, ADR-style decisions, and AI interaction documentation grounded in **actual** stack and tradeoffs (no invented tech). |
 | 14 | **Author-led:** Add lightweight **production-readiness** hardening—centralized logging, request logging middleware, domain event logs, **consistent JSON API errors**, safe rollback on ingestion failure, global handlers for unexpected exceptions—not pushed proactively by AI in early implementation prompts. |
+| 15 | **Author-led:** Add **basic frontend tests** (Vitest, React Testing Library)—component/dashboard smoke coverage—not suggested unsolicited during the initial UI build; the author **asked for this proactively**. |
 
 *Additional iteration prompts (representative):* narrow UI scope (remove pagination/search/multi-page admin); align layout with operational monitoring; adjust anomaly thresholds/constants as needed; fix Docker/env/test DB wiring during local validation.
 
 **Note:** Initial scaffolding prompts focused on features and correctness; **logging, structured errors, and transactional rollback discipline** were **not enforced upfront by the AI**. The author **intervened later** with an explicit request to strengthen observability and API error handling for the take-home submission.
+
+**Note (frontend tests):** **Vitest / Testing Library** coverage was also **not** put forward by the AI as a default follow-on to the dashboard work. The author **requested frontend tests proactively** to complement the heavier backend test emphasis without expanding scope into a large UI test matrix.
 
 ### 2. Output received (summary — full paste not required)
 
 - **Early:** Module/layout suggestions (FastAPI routers, SQLAlchemy models), Docker Compose skeleton, endpoint list, initial React component tree.
 - **Backend:** Service-layer patterns; locking/increment discussions; seed/mission assumptions; pytest fixtures and integration-style tests; concurrent HTTP smoke harness.
 - **Frontend:** MUI layout ideas, API client, hooks; initial layouts skewed toward generic admin dashboards until redirected.
+- **Frontend tests (after author request):** Vitest config, RTL + jest-dom setup, mocked-hook tests for `App`, component tests for chips—scoped small on purpose.
 - **Docs:** Draft README/ADR/log markdown from agreed decisions.
 
 ### 3. Corrections and redirections when the AI missed the mark
@@ -47,11 +51,12 @@ Plain markdown log of AI-assisted work: **prompts**, **summarized outputs**, **c
 - **Frontend:** Pushed back on enterprise-dashboard drift (**pagination**, **search**, **multi-page admin**); iterated to single-page operational dashboard; added polling backoff and degraded UX behavior.
 - **Documentation:** Stripped invented tech, exaggerated scale, and fake benchmarks.
 - **Logging & errors:** The AI did **not** bake in centralized logging, consistent JSON error bodies, or ingestion rollback/error-handler wiring from the **first** implementation prompts; the author **followed up explicitly** to add lightweight operational hardening appropriate to the MVP.
+- **Frontend tests:** Basic **Vitest + Testing Library** tests (e.g. presentational components, mocked dashboard render, error/loading states) were **not** offered unprompted after the UI was built; the author **asked proactively** to add them for submission completeness.
 
 ### 4. Reflection (5 bullets)
 
 - **Good at:** Scaffolding (Compose, routers, models), repetitive boilerplate, test harness patterns, and speeding up first drafts of UI and docs.
-- **Failed or misaligned when:** Proposing **overbroad** UI (generic admin) or **overengineered** infra relative to a **5–6 hour** MVP scope; also **not** proactively layering in **logging and consistent API error handling** until the author **asked for that hardening explicitly** (it was not a default in early prompts).
+- **Failed or misaligned when:** Proposing **overbroad** UI (generic admin) or **overengineered** infra relative to a **5–6 hour** MVP scope; also **not** proactively layering in **logging and consistent API error handling**, or **frontend unit/component tests**, until the author **asked for those explicitly** (they were not defaults in early prompts).
 - **Double-checked manually:** **Transaction ordering**, **row-level locking** paths, **atomic zone increments**, and **race behavior** against Postgres-backed tests—not AI prose alone.
 - **Required human ownership:** **Architectural tradeoffs** (sync ingestion vs queues, MVs vs direct queries) and **explicit assumptions** (missions, idempotency, anomaly semantics).
 - **Human-led product detail:** The **impossible position jump** rule was **proposed by the author**; AI helped encode and integrate it.
@@ -135,6 +140,14 @@ Stages below mirror the same work as the table, with slightly more narrative.
 **Author intervention:** The author **explicitly requested** later-step hardening: centralized Python logging, HTTP request logging (method/path/status/duration), concise domain logs (telemetry accepted, stale telemetry, zones, anomalies, fault transitions), **consistent `{ "error": { "code", "message" } }` responses** for domain and unexpected failures, safe **`rollback()`** on telemetry errors, and regression tests. This was **not** something the AI insisted on from the initial implementation phase without that prompt.
 
 **Output:** Implemented lightweight logging middleware (avoiding Starlette `BaseHTTPMiddleware` pitfalls), `DomainError` vs generic `Exception` handler registration aligned with FastAPI/Starlette behavior, and documentation updates in the README.
+
+### 13. Frontend unit / component tests
+
+**Context:** Backend testing was prioritized early (pytest, concurrency, E2E smoke); the React stack shipped without an automated UI test layer by default.
+
+**Author intervention:** The author **proactively requested** **basic frontend tests**—Vitest, jsdom, Testing Library, a small setup file, and a handful of tests (e.g. `StatusChip`, `App` with mocked `useFleetDashboardData`). This was **not** framed as a requirement in the AI’s initial dashboard prompts; it was added when the author asked for it.
+
+**Output:** `npm run test` / `vitest run`, README note on frontend tests; scope stays intentionally light versus backend coverage.
 
 ---
 
