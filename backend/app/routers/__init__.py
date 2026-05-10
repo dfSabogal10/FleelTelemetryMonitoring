@@ -1,3 +1,3 @@
-from app.routers import anomalies, health, telemetry, zones
+from app.routers import anomalies, fleet, health, telemetry, zones
 
-__all__ = ["anomalies", "health", "telemetry", "zones"]
+__all__ = ["anomalies", "fleet", "health", "telemetry", "zones"]

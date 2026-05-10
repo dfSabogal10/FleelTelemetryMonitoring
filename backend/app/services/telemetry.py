@@ -9,6 +9,7 @@ from app.models.telemetry_event import TelemetryEvent
 from app.models.vehicle import Vehicle
 from app.schemas.telemetry import TelemetryIngestRequest, TelemetryIngestResponse
 from app.services.anomaly import detect_anomalies
+from app.services.fault_transition import FaultTransitionService
 from app.services.zone_count import increment_zone_entry_count
 
 
@@ -64,6 +65,11 @@ class TelemetryService:
             )
 
         if vehicle.last_seen_at is None or payload.timestamp >= vehicle.last_seen_at:
+            await FaultTransitionService.handle_fault_transition_if_needed(
+                session=session,
+                vehicle=vehicle,
+                incoming_status=status_value,
+            )
             vehicle.status = status_value
             vehicle.battery_pct = payload.battery_pct
             vehicle.speed_mps = payload.speed_mps
