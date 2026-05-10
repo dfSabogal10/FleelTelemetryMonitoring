@@ -144,6 +144,18 @@ Caching **non-authoritative** read models with TTL invalidation — **after** co
 **Decision**  
 Implement **deterministic, explainable heuristics** tied to telemetry fields and persisted as anomaly rows.
 
+**Implemented rules (MVP)** — evaluated on each accepted telemetry payload (see `app/services/anomaly.py`):
+
+| Rule | Trigger | Severity | Notes |
+|------|---------|----------|--------|
+| **Fault status** | `status == fault` | **critical** | Operator-visible fault declaration from the edge. |
+| **Low battery** | `battery_pct < 15` | warning | Fixed threshold; illustrative for industrial bots. |
+| **Excessive speed** | `speed_mps > 5.0` | warning | Single threshold in m/s; not tuned per vehicle class. |
+| **Error codes reported** | `error_codes` non-empty | warning | Any reported code list raises an anomaly (payload is trusted). |
+| **Impossible position jump** | Implied speed between **previous** and **current** event `> 8.0` m/s | warning | Haversine distance between successive `(lat, lon)` divided by positive elapsed time (`current.timestamp − previous.timestamp`); skipped if there is no prior event for the vehicle or elapsed time `≤ 0`. |
+
+The **impossible jump** rule encodes “teleportation” / bad GPS / clock skew sanity-checking without claiming physical vehicle dynamics modeling. Thresholds are **constants** for transparency and tests, not learned parameters. **Rule intent** for this check came from **author feedback** during design (see **AI_INTERACTION_LOG.md**); implementation followed in code review.
+
 **Consequences**  
 - **+** Reproducible tests and debugging.  
 - **−** Not adaptive “learning” detection.

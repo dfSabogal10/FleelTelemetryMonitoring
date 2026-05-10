@@ -68,7 +68,20 @@ Enforced **monotonic update rule** for vehicle “current” state (`incoming ti
 
 ---
 
-### 5. Zone counting
+### 5. Anomaly detection heuristics
+
+**Prompts**  
+Define deterministic anomaly rules from telemetry (battery, speed, faults, error codes, etc.).
+
+**AI output**  
+Initial rule suggestions and wiring into ingestion.
+
+**Human feedback (author)**  
+The author **provided explicit feedback** during design: among other refinements, the **`impossible position jump`** rule (**compare successive positions and timestamps; flag implied speed above a fixed m/s cap using haversine distance**) was **proposed by the human**, not originated by the AI — the AI helped implement and phrase it once the intent was clear.
+
+---
+
+### 6. Zone counting
 
 **Prompts**  
 Increment per-zone entry counts safely under concurrency.
@@ -81,7 +94,7 @@ Chose **database-side atomic increments** on persisted rows; rejected process-lo
 
 ---
 
-### 6. Fault transition transaction handling
+### 7. Fault transition transaction handling
 
 **Prompts**  
 On transition to fault: cancel active mission, create maintenance record; keep consistency with telemetry.
@@ -94,7 +107,7 @@ Placed fault side effects **inside the same ingestion transaction** as vehicle u
 
 ---
 
-### 7. E2E / load-style smoke testing
+### 8. E2E / load-style smoke testing
 
 **Prompts**  
 Add a concurrent ingestion scenario across many vehicles.
@@ -107,7 +120,7 @@ Framed the test as **correctness under concurrency**, **not** a benchmark — **
 
 ---
 
-### 8. Frontend architecture
+### 9. Frontend architecture
 
 **Prompts**  
 React + TypeScript + Material UI; fetch fleet, vehicles, zones, anomalies; poll for updates.
@@ -120,7 +133,7 @@ Chose **lightweight local state** and a **polling hook** — **no Redux** or glo
 
 ---
 
-### 9. Dashboard UI refinement
+### 10. Dashboard UI refinement
 
 **Prompts**  
 Single-page operational dashboard: fleet summary cards, vehicle table, zone counts, recent anomalies.
@@ -133,7 +146,7 @@ Initial layouts tended toward a **generic enterprise admin** pattern.
 
 ---
 
-### 10. Documentation generation
+### 11. Documentation generation
 
 **Prompts**  
 Produce README, ADRs, and this log reflecting **real** tradeoffs (queues, MVs, idempotency, polling).
@@ -149,6 +162,7 @@ Removed **invented** tech and **unfair** scale claims; ensured **honest** MVP bo
 ## Reflection
 
 - AI was **effective** for **scaffolding**, **boilerplate**, and **speeding up test and API wiring** once directions were clear.
+- **Human feedback** shaped product behavior in concrete ways — for example the **impossible position jump** anomaly rule was **authored as a human proposal**, with AI assisting implementation after the idea was set.
 - AI sometimes proposed **overengineered** UI or infrastructure **misaligned with challenge scope**; **active constraint** (especially on the frontend) saved time and complexity.
 - **Architectural tradeoffs** (sync ingestion vs. queues, Postgres vs. SQLite, MVs vs. direct queries) required **manual reasoning**; AI suggestions were **inputs**, not verdicts.
 - **Transactional correctness** and **concurrency** concerns were validated by **code review** and **tests**, not by assuming AI-generated locking prose was sufficient.
