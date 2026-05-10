@@ -10,6 +10,10 @@ default) so tests never touch the normal development database (`fleet`).
 Prerequisites: Postgres reachable at the URL below; create `fleet_test` once if
 needed (Docker Compose mounts `docker/postgres/init-test-db.sql` on first volume
 init). Override credentials or host with `TEST_DATABASE_URL`.
+
+E2E smoke: ``tests/e2e/test_fleet_ingestion_smoke.py`` simulates 50 vehicles at 1 Hz for 3
+logical seconds (concurrent POST /telemetry per tick). It checks correctness under concurrent
+ingestion, not throughput; run with the same ``pytest`` command as other tests.
 """
 
 from __future__ import annotations
