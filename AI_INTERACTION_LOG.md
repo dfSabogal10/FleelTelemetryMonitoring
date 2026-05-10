@@ -23,7 +23,7 @@ Plain markdown log of AI-assisted work: **prompts**, **summarized outputs**, **c
 | 11 | Add polling **backoff** when the API fails; keep last good data visible; non-intrusive error banner. |
 | 12 | Refine dashboard to a **single-page operational** view—fleet cards, vehicle table, zone counts, recent anomalies—avoid enterprise admin patterns. |
 | 13 | Generate README, ADR-style decisions, and AI interaction documentation grounded in **actual** stack and tradeoffs (no invented tech). |
-| 14 | **Author-led:** Add lightweight **production-readiness** hardening—centralized logging, request logging middleware, domain event logs, **consistent JSON API errors**, safe rollback on ingestion failure, global handlers for unexpected exceptions—not pushed proactively in early implementation prompts. |
+| 14 | **Author-led:** Add lightweight **production-readiness** hardening—centralized logging, request logging middleware, domain event logs, **consistent JSON API errors**, safe rollback on ingestion failure, global handlers for unexpected exceptions—not pushed proactively by AI in early implementation prompts. |
 
 *Additional iteration prompts (representative):* narrow UI scope (remove pagination/search/multi-page admin); align layout with operational monitoring; adjust anomaly thresholds/constants as needed; fix Docker/env/test DB wiring during local validation.
 
