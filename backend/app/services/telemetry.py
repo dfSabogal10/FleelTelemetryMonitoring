@@ -4,9 +4,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import VehicleNotFoundError
+from app.models.anomaly import Anomaly
 from app.models.telemetry_event import TelemetryEvent
 from app.models.vehicle import Vehicle
 from app.schemas.telemetry import TelemetryIngestRequest, TelemetryIngestResponse
+from app.services.anomaly import detect_anomalies
+from app.services.zone_count import increment_zone_entry_count
 
 
 class TelemetryService:
@@ -23,6 +26,13 @@ class TelemetryService:
             raise VehicleNotFoundError(payload.vehicle_id)
 
         status_value = payload.status.value
+        previous_event_stmt = (
+            select(TelemetryEvent)
+            .where(TelemetryEvent.vehicle_id == payload.vehicle_id)
+            .order_by(TelemetryEvent.timestamp.desc())
+            .limit(1)
+        )
+        previous_event = (await session.execute(previous_event_stmt)).scalar_one_or_none()
 
         event = TelemetryEvent(
             vehicle_id=payload.vehicle_id,
@@ -37,6 +47,21 @@ class TelemetryService:
         )
         session.add(event)
         await session.flush()
+
+        if payload.zone_entered is not None:
+            await increment_zone_entry_count(session, payload.zone_entered)
+
+        detected_anomalies = detect_anomalies(payload, previous_event)
+        for anomaly in detected_anomalies:
+            session.add(
+                Anomaly(
+                    vehicle_id=payload.vehicle_id,
+                    telemetry_event_id=event.id,
+                    anomaly_type=anomaly["type"],
+                    severity=anomaly["severity"],
+                    message=anomaly["message"],
+                )
+            )
 
         if vehicle.last_seen_at is None or payload.timestamp >= vehicle.last_seen_at:
             vehicle.status = status_value

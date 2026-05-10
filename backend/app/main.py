@@ -3,8 +3,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import AsyncSessionLocal, init_db
+from app.routers.anomalies import router as anomalies_router
 from app.routers.health import router as health_router
 from app.routers.telemetry import router as telemetry_router
+from app.routers.zones import router as zones_router
 from app.services.seed import seed_database
 
 
@@ -25,3 +27,5 @@ app = FastAPI(
 
 app.include_router(health_router)
 app.include_router(telemetry_router)
+app.include_router(zones_router)
+app.include_router(anomalies_router)
