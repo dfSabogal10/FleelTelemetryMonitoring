@@ -11,7 +11,7 @@ import type { Anomaly, FleetState, Vehicle, ZoneCount } from "../api/types";
 /** Normal poll interval after a successful refresh. */
 const POLL_MS_SUCCESS = 1000;
 
-const ANOMALY_LIMIT = 200;
+const ANOMALY_LIMIT = 5;
 
 const RETRY_MESSAGE = "Backend unavailable. Retrying…";
 

@@ -30,11 +30,13 @@ export default function App() {
 
         {vehicles.length > 0 ? (
           <Grid container spacing={2}>
+            <Grid size={{ xs: 12, lg: 8 }}> 
+              <Typography variant="h6" fontWeight={700} sx={{ mb: 1.5 }}>
+                Fleet State
+              </Typography>
+            </Grid>
             <Grid size={{ xs: 12, lg: 8 }}>
               <Stack spacing={2}>
-                <Typography variant="h6" fontWeight={700}>
-                  Fleet State
-                </Typography>
                 <Box>
                   <FleetStateCards fleetState={fleetState} />
                 </Box>
