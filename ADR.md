@@ -1,191 +1,124 @@
-# Architecture Decision Records
+# Architecture Decision Record
 
-Concise ADRs for the Fleet Telemetry Monitoring MVP. Each entry follows: **Context → Decision → Consequences → Alternatives considered**.
-
----
-
-## ADR-1: FastAPI + async SQLAlchemy (asyncpg)
-
-**Context**  
-The API must handle concurrent HTTP ingestion and read queries against Postgres with clear async I/O boundaries.
-
-**Decision**  
-Use **FastAPI** with **SQLAlchemy 2 async** and **asyncpg**.
-
-**Consequences**  
-- **+** Natural async request handlers; one session per request pattern fits FastAPI.  
-- **+** Type hints and Pydantic integration align with API validation.  
-- **−** Async SQLAlchemy has a steeper mental model than sync; tests must align loop/fixture scope with async engines.
-
-**Alternatives**  
-- **Sync SQLAlchemy + thread pool**: simpler mental model, less ideal under concurrent load.  
-- **Django / other stacks**: heavier for a focused API-only service.
-
-**At larger scale**  
-Connection pooling tuning, read replicas, or splitting read/write paths — without changing the core “Postgres is truth” rule.
+This file answers the take-home rubric first, then adds **extended ADRs** for readers who want topic-by-topic depth.
 
 ---
 
-## ADR-2: Postgres over SQLite
+## 1. What were the two or three most important decisions, and why?
 
-**Context**  
-The system must support **overlapping ingestion and reads**, **row-level locking**, and **atomic increments** under concurrency.
+**Decision A — PostgreSQL as the only source of truth (no in-memory authoritative fleet or zone counters)**  
+Concurrency-sensitive behavior (atomic zone increments, transactional fault side effects, aggregate reads) depends on **durable rows and locks**. Keeping “truth” out of process memory avoids split-brain across instances and makes restarts safe.
 
-**Decision**  
-Use **PostgreSQL** as the only database.
+**Decision B — Synchronous, transactional ingestion per `POST /telemetry` (no queue/broker as the default path)**  
+Each event is handled in **one commit boundary**: persist telemetry, apply stale guards, update vehicle snapshot, increment zones, record anomalies, run fault transitions. That trades peak throughput for a **simple correctness story** appropriate to ~50 vehicles / ~50 events/sec and a short timebox.
 
-**Consequences**  
-- **+** Mature concurrent writer semantics and transactional isolation suitable for locking patterns.  
-- **+** Behavior closer to production deployments.  
-- **−** Requires running Postgres locally or in Docker for dev/test (operational cost vs. SQLite file).
-
-**Alternatives**  
-- **SQLite**: attractive for a single-file demo, but a weaker fit for concurrent ingestion + explicit locking patterns used here.
-
-**At larger scale**  
-Partitioning, replicas, managed Postgres — not required for this MVP’s cardinality.
+**Decision C — Telemetry-driven operational state (no separate public “set vehicle status” API)**  
+Vehicle status and fault handling stay on the **same write path** as ingestion to avoid dual-write ambiguity between operators and the edge.
 
 ---
 
-## ADR-3: Synchronous transactional ingestion (no queue/batch-by-default)
+## 2. What was unclear in the spec, and what did we assume?
 
-**Context**  
-Telemetry arrives via `POST /telemetry`. Alternatives include **brokers (Kafka/RabbitMQ)**, **Celery-style workers**, **batching DB writes**, or **in-memory buffers** before flush.
-
-**Decision**  
-Process each accepted request in a **single transactional unit**: persist telemetry, update vehicle state (with stale guards), adjust zone counters, evaluate anomalies, and run fault side effects **before commit**.
-
-**Consequences**  
-- **+** **Straightforward correctness story**: one transaction boundary per event.  
-- **+** Easier reasoning about ordering with DB constraints and locks.  
-- **+** Lower **operational complexity** (no broker cluster) within a **5–6 hour** challenge.  
-- **−** Throughput bounded by per-request transaction latency; **not** optimized for firehose-scale ingestion.
-
-**Alternatives considered**  
-- **Queue + workers**: better peak throughput and decoupling; adds delivery semantics, poison queues, and worker scaling concerns.  
-- **Batching flushes**: fewer round-trips; adds latency and failure modes for partial batches.  
-- **In-memory buffers**: risks data loss and split-brain vs. DB unless carefully designed.
-
-**Rationale for MVP scale**  
-Challenge assumptions imply **~50 events/sec** — **synchronous transactional ingestion** is sufficient and trades peak throughput for **clarity and transactional guarantees**.
-
-**At larger scale**  
-Durable queues, idempotent consumers, backpressure, and possibly **regional** ingestion layers — with **idempotency keys** (see README).
+| Gap | Deliberate assumption |
+|-----|------------------------|
+| **Missions** — payloads did not include mission IDs | At most **one active mission per vehicle**; missions **seeded at startup**; cancellation targets that row. |
+| **Idempotency** — no `event_id` | Every accepted POST is a **distinct** persisted event; we **do not** dedupe by timestamp or payload hash (could drop legitimate repeats). |
+| **Anomaly semantics** — “detection” undefined | **Deterministic rules** over telemetry fields (see `app/services/anomaly.py`); not ML. **Impossible position jump** rule intent came from **author feedback** during design (see AI interaction log). |
+| **Trust boundaries** | **Timestamps** trusted for ordering vs. `last_seen_at`; **`zone_entered`** trusted for zone increments when present and valid. |
 
 ---
 
-## ADR-4: Polling over WebSockets
+## 3. What would need to change if scale grew significantly?
 
-**Context**  
-The dashboard needs near-real-time visibility into fleet and zones.
+**“Significantly” here means:** roughly **10×+** sustained ingestion rate or fleet size, **multi-region** deployment, or **read-heavy** dashboards where Postgres CPU/IO becomes the bottleneck—not marginal growth within a single modest fleet.
 
-**Decision**  
-**HTTP polling** on a ~**1 s** interval on success; **backoff** when the API is unhealthy.
+Likely changes (incremental, not all-or-nothing):
 
-**Consequences**  
-- **+** Simple client and ops story; easy to cache-bust and test.  
-- **−** Not ideal for very large payloads or sub-second fan-out.
+- **Ingestion**: durable **queues**, **idempotent** consumers, **batch writes** or partitioned writers; **edge `event_id`** + uniqueness constraints.
+- **Reads**: **read replicas**, **caching** (Redis) for non-authoritative aggregates, **materialized views** or projections with explicit staleness SLAs.
+- **Dashboard**: **WebSockets/SSE** or incremental deltas if polling cost or latency dominates.
 
-**Alternatives**  
-- **WebSockets / SSE**: lower latency and push efficiency when subscription semantics matter.
-
-**At larger scale**  
-Push channels, incremental deltas, or field-level subscriptions — if the UI needs them.
+Core principle that should survive: **Postgres remains authoritative** until a deliberate CQRS/event-sourcing split is justified.
 
 ---
 
-## ADR-5: Telemetry-driven fault transitions (no separate status API)
+## 4. What was deliberately left out, and why?
 
-**Context**  
-Vehicles can enter **fault** and trigger mission cancellation and maintenance records.
-
-**Decision**  
-Apply fault-related transitions **inside telemetry ingestion** — **no** separate public “update vehicle status” endpoint.
-
-**Consequences**  
-- **+** **Single write path** for operational state derived from edge telemetry.  
-- **+** Avoids dual-write ambiguity between “manual status” and telemetry.  
-- **−** All fault transitions must go through the ingestion path (by design).
-
-**Alternatives**  
-- **Dedicated transition endpoint**: flexible for operators but invites inconsistency with telemetry unless heavily coordinated.
-
-**At larger scale**  
-Operator overrides might warrant workflow APIs — still ideally reconciled with telemetry and audit logs.
+| Omitted | Why (MVP / timebox) |
+|---------|---------------------|
+| Kafka/RabbitMQ/Celery-style ingestion | Operational cost; sync path sufficient for stated scale |
+| Batched-only ingestion buffers | Complexity vs. correctness wins |
+| Redis / MVs / CQRS read models | Cardinality small; strong consistency simpler |
+| WebSockets | Polling sufficient for 50 vehicles @ ~1 Hz UI refresh |
+| ML anomaly detection | Out of scope; rules are testable |
+| Kubernetes, tracing, exactly-once semantics | Not required to demonstrate transactional correctness |
 
 ---
 
-## ADR-6: No in-memory authoritative counters or fleet state
+## Appendix A — Extended ADRs (topic-by-topic)
 
-**Context**  
-Zone counts and fleet aggregates could be mirrored in process memory for speed.
+*Optional depth; same decisions as above, split for readers who prefer ADR-style sections.*
 
-**Decision**  
-**Do not** treat in-memory structures as authoritative. Counters and aggregates **read from Postgres**; increments use **database atomicity**.
+### A.1 FastAPI + async SQLAlchemy (asyncpg)
 
-**Consequences**  
-- **+** Horizontal scaling story does not depend on a magic single writer process.  
-- **+** Restarts do not silently reset “truth.”  
-- **−** Read paths hit the DB every time (acceptable at this cardinality).
+**Context:** Concurrent HTTP + async DB I/O.  
+**Decision:** FastAPI + SQLAlchemy 2 async + asyncpg.  
+**Tradeoff:** Async SQLAlchemy complexity vs. sync + threads; chosen for natural async handlers.  
+**Larger scale:** Pool tuning, replicas (see §3).
 
-**Alternatives**  
-- **Redis counters**: fast but adds synchrony and failure modes with the DB unless carefully designed.
+### A.2 Postgres over SQLite
 
-**At larger scale**  
-Caching **non-authoritative** read models with TTL invalidation — **after** correctness in DB is unquestioned.
+**Context:** Overlapping writers, `SELECT … FOR UPDATE`, atomic increments.  
+**Decision:** Postgres only.  
+**Tradeoff:** Ops overhead vs. SQLite file simplicity.  
+**Larger scale:** Managed Postgres, partitioning if row counts explode.
 
----
+### A.3 Synchronous transactional ingestion
 
-## ADR-7: Deterministic anomaly heuristics
+**Context:** Alternative patterns—brokers, Celery workers, periodic DB flushes, in-memory buffers.  
+**Decision:** One transaction per accepted telemetry request (see Decision B above).  
+**Larger scale:** Queues + idempotent workers (see §3).
 
-**Context**  
-“Anomaly detection” could mean ML pipelines, rules engines, or external scoring services.
+### A.4 Polling over WebSockets
 
-**Decision**  
-Implement **deterministic, explainable heuristics** tied to telemetry fields and persisted as anomaly rows.
+**Decision:** HTTP polling ~1s on success, backoff on failure.  
+**Larger scale:** Push channels if UI/latency demands it.
 
-**Implemented rules (MVP)** — evaluated on each accepted telemetry payload (see `app/services/anomaly.py`):
+### A.5 Telemetry-driven fault transitions
 
-| Rule | Trigger | Severity | Notes |
-|------|---------|----------|--------|
-| **Fault status** | `status == fault` | **critical** | Operator-visible fault declaration from the edge. |
-| **Low battery** | `battery_pct < 15` | warning | Fixed threshold; illustrative for industrial bots. |
-| **Excessive speed** | `speed_mps > 5.0` | warning | Single threshold in m/s; not tuned per vehicle class. |
-| **Error codes reported** | `error_codes` non-empty | warning | Any reported code list raises an anomaly (payload is trusted). |
-| **Impossible position jump** | Implied speed between **previous** and **current** event `> 8.0` m/s | warning | Haversine distance between successive `(lat, lon)` divided by positive elapsed time (`current.timestamp − previous.timestamp`); skipped if there is no prior event for the vehicle or elapsed time `≤ 0`. |
+**Decision:** Fault side effects inside ingestion; no separate status mutation API (see Decision C above).
 
-The **impossible jump** rule encodes “teleportation” / bad GPS / clock skew sanity-checking without claiming physical vehicle dynamics modeling. Thresholds are **constants** for transparency and tests, not learned parameters. **Rule intent** for this check came from **author feedback** during design (see **AI_INTERACTION_LOG.md**); implementation followed in code review.
+### A.6 No in-memory authoritative counters
 
-**Consequences**  
-- **+** Reproducible tests and debugging.  
-- **−** Not adaptive “learning” detection.
+**Decision:** Zone/fleet truth in DB rows; atomic SQL increments.  
+**Larger scale:** Cache **non-authoritative** read models only after DB correctness is solid.
 
-**Alternatives**  
-- **ML models**: powerful; needs training data, deployment, and governance — out of MVP scope.
+### A.7 Deterministic anomaly heuristics
 
----
+**Decision:** Explainable rules persisted as anomaly rows.
 
-## ADR-8: Direct aggregate queries over materialized views
+**Implemented rules (MVP)** — `app/services/anomaly.py`:
 
-**Context**  
-Fleet totals and zone counts could be served from **materialized views** or **projection tables** refreshed asynchronously.
+| Rule | Trigger | Severity |
+|------|---------|----------|
+| Fault status | `status == fault` | critical |
+| Low battery | `battery_pct < 15` | warning |
+| Excessive speed | `speed_mps > 5.0` | warning |
+| Error codes reported | `error_codes` non-empty | warning |
+| Impossible position jump | Haversine implied speed between successive events `> 8.0` m/s | warning |
 
-**Decision**  
-Use **direct SQL aggregates / simple reads** against base tables for fleet and zone endpoints.
+Skipped when no prior event or elapsed time ≤ 0. **Impossible jump** rule intent: author feedback during design (see AI_INTERACTION_LOG.md).
 
-**Consequences**  
-- **+** **Strong consistency** relative to committed writes; no refresh lag policy to argue about.  
-- **+** Minimal moving parts for **~50** vehicles and **~20** zones.  
-- **−** Heavier read queries if cardinality grows without new indexing or projections.
+**Larger scale:** ML or external scoring—only with data and ops maturity.
 
-**Alternatives**  
-- **Materialized views**: can speed heavy aggregates; introduce **staleness** and **refresh** operational rules.
+### A.8 Direct aggregates vs materialized views
 
-**At larger scale**  
-Indexed projections, MVs with controlled refresh, or CQRS-style read models — when query cost justifies them.
+**Decision:** Query base tables for `/fleet/state`, `/zones/counts`, `/vehicles`.  
+**Tradeoff:** Simplicity vs. refresh policies for MVs.  
+**Larger scale:** Indexed projections or MVs when query cost warrants.
 
 ---
 
-## Summary
+## Appendix B — Summary line
 
-The MVP optimizes for **transactional clarity**, **Postgres as source of truth**, and **honest scope** for a timeboxed exercise. Throughput-oriented and distribution-heavy patterns are **explicitly deferred** until requirements justify the complexity.
+The MVP optimizes **transactional clarity**, **Postgres as source of truth**, and **honest scope** for a timeboxed exercise; distribution-heavy patterns are **explicitly deferred** until §3 triggers apply.

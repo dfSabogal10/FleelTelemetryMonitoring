@@ -91,6 +91,37 @@ Point `VITE_API_BASE_URL` at your API if not using the Compose default.
 | `GET` | `/anomalies` | Recent anomalies (optional filters; `limit` capped server-side) |
 | `GET` | `/health` | Liveness |
 
+### Request & query validation
+
+Validation uses **Pydantic** (`422` on validation failure). Domain rules (unknown vehicle, DB constraints) return **application errors** (e.g. `404` for unknown `vehicle_id` on ingest).
+
+#### `POST /telemetry` (JSON body)
+
+| Field | Validation |
+|--------|------------|
+| `vehicle_id` | Required string, **min length 1**. Unknown IDs → **404** after validation. |
+| `timestamp` | ISO **datetime** (parsed by Pydantic/FastAPI). |
+| `lat` | **−90 ≤ lat ≤ 90** |
+| `lon` | **−180 ≤ lon ≤ 180** |
+| `battery_pct` | **integer 0–100** |
+| `speed_mps` | **float ≥ 0** |
+| `status` | Enum: **`idle`**, **`moving`**, **`charging`**, **`fault`** |
+| `error_codes` | **array of strings** (may be empty). |
+| `zone_entered` | **`null`** or a **known zone id** string. Unknown zone strings → **422**. Known zones are the constants in `app/constants/zones.py` (e.g. `charging_bay_1`, `maintenance_bay`, `aisle_a`, docks, etc.). |
+
+#### `GET /anomalies` (query parameters)
+
+| Parameter | Validation |
+|-----------|------------|
+| `vehicle_id` | Optional string; **no format validation** — filters anomalies for that id if provided. |
+| `start_time` | Optional ISO **datetime** — **`created_at ≥ start_time`**. |
+| `end_time` | Optional ISO **datetime** — **`created_at ≤ end_time`**. |
+| `limit` | Optional integer, default **100**, **min 1**, **max 1000** |
+
+#### Read endpoints without query/body validation
+
+`GET /vehicles`, `GET /fleet/state`, `GET /zones/counts`, and `GET /health` take **no query parameters** in this MVP; responses are derived entirely from persisted DB state.
+
 ---
 
 ## Assumptions
